@@ -1,4 +1,4 @@
-# TP3 - Azure DevOps CI/CD
+# TP3 - Azure Cloud-Native CI/CD
 # Muhammad Irfan Wahyudi - II BDCC
 
 trigger:
@@ -7,34 +7,41 @@ trigger:
       - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-24.04'
+
+variables:
+  acrName: 'acrirfantp3'
+  acrRepository: 'tp3-webapp'
 
 stages:
+
   - stage: CI
     displayName: 'Continuous Integration'
 
     jobs:
-      - job: BuildAndTest
-        displayName: 'Build and Test Docker'
+
+      - job: BuildTestPublish
+        displayName: 'Build, Test and Publish Docker'
 
         steps:
-          # Step 1 : Checkout GitHub
+
+          # STEP 1 - Checkout GitHub
           - checkout: self
             displayName: 'Checkout GitHub Repository'
 
-          # Step 2 : Build Docker Image
+          # STEP 2 - Docker Build
           - script: |
-              echo "=== BUILD DOCKER IMAGE ==="
+              set -eu
 
-              docker --version
+              echo "=== BUILD DOCKER IMAGE ==="
 
               docker build \
                 -t tp3-webapp:$(Build.BuildId) .
 
-              echo "=== BUILD COMPLETED ==="
+              echo "=== BUILD SUCCESS ==="
             displayName: 'Build Docker Image'
 
-          # Step 3 : Test Docker Image
+          # STEP 3 - Test Application
           - script: |
               set -eu
 
@@ -57,3 +64,45 @@ stages:
 
               echo "=== ALL TESTS PASSED ==="
             displayName: 'Test Application'
+
+          # STEP 4 - Publish to ACR
+          - task: AzureCLI@2
+            displayName: 'Publish Image to Azure Container Registry'
+
+            inputs:
+              azureSubscription: 'sc-azure-tp3'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+
+              inlineScript: |
+                set -euo pipefail
+
+                echo "=== AUTHENTICATE WITH AZURE ==="
+
+                ACR_LOGIN_SERVER=$(az acr show \
+                  --name "$(acrName)" \
+                  --resource-group "rg-tp3-azure-cicd" \
+                  --query loginServer \
+                  --output tsv)
+
+                az acr login --name "$(acrName)"
+
+                echo "=== TAG DOCKER IMAGE ==="
+
+                docker tag \
+                  tp3-webapp:$(Build.BuildId) \
+                  "$ACR_LOGIN_SERVER/$(acrRepository):$(Build.BuildId)"
+
+                echo "=== PUSH TO ACR ==="
+
+                docker push \
+                  "$ACR_LOGIN_SERVER/$(acrRepository):$(Build.BuildId)"
+
+                echo "=== VERIFY IMAGE TAG ==="
+
+                az acr repository show-tags \
+                  --name "$(acrName)" \
+                  --repository "$(acrRepository)" \
+                  --output table
+
+                echo "=== IMAGE PUBLISHED SUCCESSFULLY ==="
