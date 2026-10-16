@@ -1,0 +1,59 @@
+# TP3 - Azure DevOps CI/CD
+# Muhammad Irfan Wahyudi - II BDCC
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: CI
+    displayName: 'Continuous Integration'
+
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Build and Test Docker'
+
+        steps:
+          # Step 1 : Checkout GitHub
+          - checkout: self
+            displayName: 'Checkout GitHub Repository'
+
+          # Step 2 : Build Docker Image
+          - script: |
+              echo "=== BUILD DOCKER IMAGE ==="
+
+              docker --version
+
+              docker build \
+                -t tp3-webapp:$(Build.BuildId) .
+
+              echo "=== BUILD COMPLETED ==="
+            displayName: 'Build Docker Image'
+
+          # Step 3 : Test Docker Image
+          - script: |
+              set -eu
+
+              echo "=== TEST DOCKER IMAGE ==="
+
+              docker run -d \
+                --name tp3-test \
+                tp3-webapp:$(Build.BuildId)
+
+              trap 'docker rm -f tp3-test >/dev/null 2>&1 || true' EXIT
+
+              sleep 3
+
+              docker exec tp3-test \
+                wget -qO- http://127.0.0.1 > page.html
+
+              cat page.html
+
+              grep -q "Welcome BDCC" page.html
+
+              echo "=== ALL TESTS PASSED ==="
+            displayName: 'Test Application'
