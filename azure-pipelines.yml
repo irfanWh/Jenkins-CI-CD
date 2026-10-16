@@ -106,3 +106,58 @@ stages:
                   --output table
 
                 echo "=== IMAGE PUBLISHED SUCCESSFULLY ==="
+    # =======================================
+  # CONTINUOUS DEPLOYMENT
+  # =======================================
+
+  - stage: CD
+    displayName: 'Continuous Deployment'
+    dependsOn: CI
+    condition: succeeded()
+
+    jobs:
+      - job: DeployContainerApp
+        displayName: 'Deploy to Azure Container Apps'
+
+        steps:
+          - checkout: none
+
+          - task: AzureCLI@2
+            displayName: 'Deploy Docker Image to Container Apps'
+
+            inputs:
+              azureSubscription: 'sc-azure-tp3'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+
+              inlineScript: |
+                set -euo pipefail
+
+                echo "=== INSTALL CONTAINER APPS EXTENSION ==="
+                az extension add --name containerapp --upgrade --yes
+
+                echo "=== GET ACR LOGIN SERVER ==="
+                ACR_LOGIN_SERVER=$(az acr show \
+                  --name acrirfantp3 \
+                  --resource-group rg-tp3-azure-cicd \
+                  --query loginServer \
+                  --output tsv)
+
+                IMAGE="$ACR_LOGIN_SERVER/tp3-webapp:$(Build.BuildId)"
+
+                echo "=== DEPLOY IMAGE: $IMAGE ==="
+
+                az containerapp update \
+                  --name ca-tp3-webapp \
+                  --resource-group rg-tp3-azure-cicd \
+                  --image "$IMAGE"
+
+                echo "=== APPLICATION URL ==="
+
+                az containerapp show \
+                  --name ca-tp3-webapp \
+                  --resource-group rg-tp3-azure-cicd \
+                  --query properties.configuration.ingress.fqdn \
+                  --output tsv
+
+                echo "=== DEPLOYMENT COMPLETED ==="
